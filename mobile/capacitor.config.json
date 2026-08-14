@@ -1,0 +1,19 @@
+{
+  "appId": "com.calibre.academy.crm",
+  "appName": "Calibre CRM",
+  "webDir": "www",
+  "server": {
+    "url": "https://YOUR_HOSTED_CRM_URL",
+    "cleartext": false,
+    "allowNavigation": ["*"]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0a1628"
+    }
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

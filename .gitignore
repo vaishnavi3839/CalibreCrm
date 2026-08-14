@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Build
+.next/
+out/
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+coverage/
+*.cover
+
+# Logs
+*.log
+logs/
+
+# Uploads / temp
+uploads/
+tmp/
+.temp/
+
+# Docker
+postgres_data/
+
+# Misc
+*.pem
+.turbo/
+backend/*.db

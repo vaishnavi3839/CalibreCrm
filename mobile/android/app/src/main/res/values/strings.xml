@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Calibre CRM</string>
+    <string name="title_activity_main">Calibre CRM</string>
+    <string name="package_name">com.calibre.academy.crm</string>
+    <string name="custom_url_scheme">com.calibre.academy.crm</string>
+</resources>
