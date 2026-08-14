@@ -6,16 +6,53 @@ from sqlalchemy import create_engine
 
 from app.core.config import get_settings
 
+
+def _normalize_async_url(url: str) -> str:
+    """Railway gives postgresql:// — async SQLAlchemy needs +asyncpg."""
+    u = (url or "").strip()
+    if u.startswith("postgres://"):
+        u = "postgresql://" + u[len("postgres://") :]
+    if u.startswith("postgresql+asyncpg://"):
+        return u
+    if u.startswith("postgresql+psycopg2://"):
+        return "postgresql+asyncpg://" + u[len("postgresql+psycopg2://") :]
+    if u.startswith("postgresql+psycopg://"):
+        return "postgresql+asyncpg://" + u[len("postgresql+psycopg://") :]
+    if u.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + u[len("postgresql://") :]
+    return u
+
+
+def _normalize_sync_url(url: str) -> str:
+    """Use psycopg v3 (installed) instead of legacy psycopg2."""
+    u = (url or "").strip()
+    if u.startswith("postgres://"):
+        u = "postgresql://" + u[len("postgres://") :]
+    if u.startswith("postgresql+psycopg://"):
+        return u
+    if u.startswith("postgresql+asyncpg://"):
+        return "postgresql+psycopg://" + u[len("postgresql+asyncpg://") :]
+    if u.startswith("postgresql+psycopg2://"):
+        return "postgresql+psycopg://" + u[len("postgresql+psycopg2://") :]
+    if u.startswith("postgresql://"):
+        return "postgresql+psycopg://" + u[len("postgresql://") :]
+    return u
+
+
 settings = get_settings()
 
-echo=False  # set True only while debugging SQL
+echo = False  # set True only while debugging SQL
 if settings.is_development and settings.app_env == "debug_sql":
     echo = True
+
+async_url = _normalize_async_url(settings.database_url)
+sync_url = _normalize_sync_url(settings.database_url_sync)
+
 engine_kwargs = {"echo": echo}
-if not settings.database_url.startswith("sqlite"):
+if not async_url.startswith("sqlite"):
     engine_kwargs["pool_pre_ping"] = True
 
-engine = create_async_engine(settings.database_url, **engine_kwargs)
+engine = create_async_engine(async_url, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
@@ -25,12 +62,12 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 sync_kwargs = {}
-if settings.database_url_sync.startswith("sqlite"):
+if sync_url.startswith("sqlite"):
     sync_kwargs["connect_args"] = {"check_same_thread": False}
 else:
     sync_kwargs["pool_pre_ping"] = True
 
-sync_engine = create_engine(settings.database_url_sync, **sync_kwargs)
+sync_engine = create_engine(sync_url, **sync_kwargs)
 SyncSessionLocal = sessionmaker(bind=sync_engine, autoflush=False, autocommit=False)
 
 
