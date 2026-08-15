@@ -18,6 +18,22 @@ const nextConfig: NextConfig = {
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
       "113963656390-odafike631l3st0onl83t4181b0vj75m.apps.googleusercontent.com",
   },
+  async headers() {
+    return [
+      {
+        source: "/login",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, max-age=0" },
+        ],
+      },
+      {
+        source: "/",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
