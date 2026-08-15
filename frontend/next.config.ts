@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Ensure the public Google client ID is always available to the browser bundle.
+  env: {
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID:
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+      "113963656390-odafike631l3st0onl83t4181b0vj75m.apps.googleusercontent.com",
+  },
   async rewrites() {
     return [
       {

@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Request, UploadFile
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import get_settings
 from app.core.exceptions import ValidationAppError
 from app.core.response import success
 from app.models import Student
@@ -24,6 +25,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 UPLOAD_ROOT = Path(__file__).resolve().parents[3] / "uploads" / "avatars"
+
+
+@router.get("/public-config")
+async def public_config():
+    """Unauthenticated config the login page needs (OAuth client IDs are public)."""
+    return success(
+        {
+            "google_client_id": get_settings().google_client_id or None,
+        }
+    )
 
 
 @router.post("/login")

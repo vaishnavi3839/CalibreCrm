@@ -56,7 +56,9 @@ class Settings(BaseSettings):
     zoom_client_id: str = ""
     zoom_client_secret: str = ""
 
-    google_client_id: str = ""
+    google_client_id: str = (
+        "113963656390-odafike631l3st0onl83t4181b0vj75m.apps.googleusercontent.com"
+    )
 
     # Vision AI for punch selfie grooming (hair, facial grooming, appearance)
     gemini_api_key: str = ""
