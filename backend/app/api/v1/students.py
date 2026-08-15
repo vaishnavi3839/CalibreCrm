@@ -52,6 +52,12 @@ class ParentCreateRequest(BaseModel):
     password: Optional[str] = Field(default=None, min_length=8)
 
 
+class BatchCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    code: Optional[str] = Field(default=None, max_length=50)
+    course_id: Optional[UUID] = None
+
+
 @router.get("/batches")
 async def list_batches(user: CurrentUser, db: DbSession):
     if user.role.name in {UserRole.STUDENT, UserRole.PARENT, UserRole.TELECALLER}:
@@ -73,6 +79,50 @@ async def list_batches(user: CurrentUser, db: DbSession):
                 for b in rows
             ]
         }
+    )
+
+
+@router.post("/batches")
+async def create_batch(payload: BatchCreateRequest, user: CurrentUser, db: DbSession):
+    """Create a training batch (used when adding students)."""
+    if user.role.name not in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.RM, UserRole.INSTRUCTOR}:
+        raise ForbiddenError()
+
+    from app.models import Course
+
+    course_id = payload.course_id
+    if not course_id:
+        course = await db.scalar(select(Course).where(Course.is_active.is_(True)).order_by(Course.created_at).limit(1))
+        if not course:
+            raise ValidationAppError("Create a course first, then add a batch.")
+        course_id = course.id
+    else:
+        course = await db.get(Course, course_id)
+        if not course or not course.is_active:
+            raise ValidationAppError("Invalid course for this batch.")
+
+    name = payload.name.strip()
+    code = (payload.code or "").strip().upper()
+    if not code:
+        base = "".join(ch for ch in name.upper() if ch.isalnum())[:12] or "BATCH"
+        code = f"{base}-{date.today().strftime('%y%m')}"
+        # ensure unique
+        n = 1
+        candidate = code
+        while await db.scalar(select(Batch.id).where(Batch.code == candidate)):
+            n += 1
+            candidate = f"{code}-{n}"
+        code = candidate
+    elif await db.scalar(select(Batch.id).where(Batch.code == code)):
+        raise ValidationAppError(f"Batch code {code} already exists.")
+
+    batch = Batch(course_id=course_id, name=name, code=code, status="active")
+    db.add(batch)
+    await db.flush()
+    return success(
+        {"id": str(batch.id), "code": batch.code, "name": batch.name, "course_id": str(batch.course_id)},
+        message="Batch created",
+        status_code=201,
     )
 
 
@@ -311,7 +361,7 @@ async def get_student(student_id: UUID, user: CurrentUser, db: DbSession):
 
 @router.post("/attendance")
 async def mark_attendance(payload: dict, user: CurrentUser, db: DbSession):
-    """Mark attendance for a batch session.
+    """Upsert attendance for a batch session (same batch+date updates, does not duplicate).
 
     payload: {
       batch_id, subject_id?, session_date, records: [{student_id, status, remarks?}]
@@ -325,39 +375,124 @@ async def mark_attendance(payload: dict, user: CurrentUser, db: DbSession):
     subject_id = UUID(payload["subject_id"]) if payload.get("subject_id") else None
     staff = await db.scalar(select(Staff).where(Staff.user_id == user.id))
 
-    session = AttendanceSession(
-        batch_id=batch_id,
-        subject_id=subject_id,
-        session_date=session_date,
-        marked_by_id=staff.id if staff else None,
-        notes=payload.get("notes"),
+    # Find existing session — NULL subject_id must use IS NULL (Postgres NULL != NULL)
+    q = select(AttendanceSession).where(
+        AttendanceSession.batch_id == batch_id,
+        AttendanceSession.session_date == session_date,
     )
-    db.add(session)
-    await db.flush()
+    if subject_id is None:
+        q = q.where(AttendanceSession.subject_id.is_(None))
+    else:
+        q = q.where(AttendanceSession.subject_id == subject_id)
+    session = await db.scalar(q.order_by(AttendanceSession.created_at.desc()).limit(1))
 
-    absent_students = []
-    for rec in payload.get("records", []):
-        status = AttendanceStatus(rec["status"])
-        record = AttendanceRecord(
-            session_id=session.id,
-            student_id=UUID(rec["student_id"]),
-            status=status,
-            remarks=rec.get("remarks"),
+    created_new = False
+    if not session:
+        session = AttendanceSession(
+            batch_id=batch_id,
+            subject_id=subject_id,
+            session_date=session_date,
+            marked_by_id=staff.id if staff else None,
+            notes=payload.get("notes") or "Manual attendance",
         )
-        db.add(record)
-        if status == AttendanceStatus.ABSENT:
-            absent_students.append(UUID(rec["student_id"]))
+        db.add(session)
+        await db.flush()
+        created_new = True
+    else:
+        if staff:
+            session.marked_by_id = staff.id
+        if payload.get("notes"):
+            session.notes = payload.get("notes")
+
+    newly_absent: list[UUID] = []
+    touched: set[UUID] = set()
+    for rec in payload.get("records", []):
+        student_id = UUID(rec["student_id"])
+        status = AttendanceStatus(rec["status"])
+        touched.add(student_id)
+
+        existing = await db.scalar(
+            select(AttendanceRecord).where(
+                AttendanceRecord.session_id == session.id,
+                AttendanceRecord.student_id == student_id,
+            )
+        )
+        prev_status = existing.status if existing else None
+        if existing:
+            existing.status = status
+            existing.remarks = rec.get("remarks") or existing.remarks
+        else:
+            db.add(
+                AttendanceRecord(
+                    session_id=session.id,
+                    student_id=student_id,
+                    status=status,
+                    remarks=rec.get("remarks"),
+                )
+            )
+
+        # Only notify parents when newly marked absent (not on every re-save)
+        if status == AttendanceStatus.ABSENT and prev_status != AttendanceStatus.ABSENT:
+            newly_absent.append(student_id)
 
     await db.flush()
 
-    # Recalc attendance % and notify parents on absence
-    for sid in {UUID(r["student_id"]) for r in payload.get("records", [])}:
+    for sid in touched:
         await _recalc_attendance(db, sid)
 
-    for sid in absent_students:
+    for sid in newly_absent:
         await _notify_absence(db, sid, session_date)
 
-    return success({"session_id": str(session.id)}, message="Attendance marked", status_code=201)
+    return success(
+        {
+            "session_id": str(session.id),
+            "updated": not created_new,
+            "students": len(touched),
+            "parents_notified": len(newly_absent),
+        },
+        message="Attendance updated" if not created_new else "Attendance marked",
+        status_code=200 if not created_new else 201,
+    )
+
+
+@router.get("/attendance/session")
+async def get_attendance_session(
+    user: CurrentUser,
+    db: DbSession,
+    batch_id: UUID = Query(...),
+    session_date: date = Query(...),
+):
+    """Load existing marks for a batch/date so re-saving updates instead of duplicating."""
+    if user.role.name not in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.INSTRUCTOR}:
+        raise ForbiddenError()
+
+    session = await db.scalar(
+        select(AttendanceSession)
+        .where(
+            AttendanceSession.batch_id == batch_id,
+            AttendanceSession.session_date == session_date,
+            AttendanceSession.subject_id.is_(None),
+        )
+        .order_by(AttendanceSession.created_at.desc())
+        .limit(1)
+    )
+    if not session:
+        return success({"session_id": None, "records": []})
+
+    rows = (
+        await db.execute(
+            select(AttendanceRecord).where(AttendanceRecord.session_id == session.id)
+        )
+    ).scalars().all()
+    return success(
+        {
+            "session_id": str(session.id),
+            "records": [
+                {"student_id": str(r.student_id), "status": r.status.value, "remarks": r.remarks}
+                for r in rows
+            ],
+        }
+    )
 
 
 @router.get("/students/{student_id}/attendance")
@@ -373,11 +508,24 @@ async def student_attendance(student_id: UUID, user: CurrentUser, db: DbSession)
             .options(selectinload(AttendanceRecord.session))
             .where(AttendanceRecord.student_id == student_id)
             .order_by(AttendanceRecord.created_at.desc())
-            .limit(100)
+            .limit(200)
         )
     ).scalars().all()
 
     summary = await _attendance_summary(db, student_id)
+
+    # One row per calendar day (latest mark wins) for history UI
+    by_day: dict = {}
+    for r in rows:
+        day = r.session.session_date.isoformat() if r.session else None
+        if not day or day in by_day:
+            continue
+        by_day[day] = {
+            "id": str(r.id),
+            "status": r.status.value,
+            "date": day,
+            "remarks": r.remarks,
+        }
 
     return success(
         {
@@ -385,39 +533,35 @@ async def student_attendance(student_id: UUID, user: CurrentUser, db: DbSession)
             "days_present": summary["days_present"],
             "days_absent": summary["days_absent"],
             "days_total": summary["days_total"],
-            "records": [
-                {
-                    "id": str(r.id),
-                    "status": r.status.value,
-                    "date": r.session.session_date.isoformat() if r.session else None,
-                    "remarks": r.remarks,
-                }
-                for r in rows
-            ],
+            "records": list(by_day.values()),
         }
     )
 
 
 async def _attendance_summary(db, student_id: UUID) -> dict:
-    total = await db.scalar(
-        select(func.count()).select_from(AttendanceRecord).where(AttendanceRecord.student_id == student_id)
-    ) or 0
-    present = await db.scalar(
-        select(func.count())
-        .select_from(AttendanceRecord)
-        .where(
-            AttendanceRecord.student_id == student_id,
-            AttendanceRecord.status.in_([AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.EXCUSED]),
+    """Count unique session days (avoids inflated totals from historical duplicate rows)."""
+    day_rows = (
+        await db.execute(
+            select(AttendanceSession.session_date, AttendanceRecord.status)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .where(AttendanceRecord.student_id == student_id)
+            .order_by(AttendanceSession.session_date.desc(), AttendanceRecord.created_at.desc())
         )
-    ) or 0
-    absent = await db.scalar(
-        select(func.count())
-        .select_from(AttendanceRecord)
-        .where(
-            AttendanceRecord.student_id == student_id,
-            AttendanceRecord.status == AttendanceStatus.ABSENT,
-        )
-    ) or 0
+    ).all()
+
+    by_day: dict[date, AttendanceStatus] = {}
+    for session_date, status in day_rows:
+        # Keep latest status per calendar day
+        if session_date not in by_day:
+            by_day[session_date] = status
+
+    present = sum(
+        1
+        for s in by_day.values()
+        if s in {AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.EXCUSED}
+    )
+    absent = sum(1 for s in by_day.values() if s == AttendanceStatus.ABSENT)
+    total = len(by_day)
     return {"days_present": present, "days_absent": absent, "days_total": total}
 
 
@@ -443,24 +587,15 @@ async def _ensure_student_access(db, user: User, student: Student) -> None:
 
 
 async def _recalc_attendance(db, student_id: UUID) -> None:
-    total = await db.scalar(
-        select(func.count()).select_from(AttendanceRecord).where(AttendanceRecord.student_id == student_id)
-    ) or 0
+    summary = await _attendance_summary(db, student_id)
+    total = summary["days_total"]
     if total == 0:
         return
-    present = await db.scalar(
-        select(func.count())
-        .select_from(AttendanceRecord)
-        .where(
-            AttendanceRecord.student_id == student_id,
-            AttendanceRecord.status.in_([AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.EXCUSED]),
-        )
-    ) or 0
+    present = summary["days_present"]
     student = await db.get(Student, student_id)
     if student:
         student.attendance_pct = round((present / total) * 100, 1)
         if student.attendance_pct < settings.attendance_warning_threshold:
-            # Notify student + parents + admins
             if student.user_id:
                 await notify_user(
                     db,

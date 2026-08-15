@@ -20,6 +20,9 @@ type Settings = {
   geofence_radius_m: number;
   require_selfie: boolean;
   require_gps_for_staff: boolean;
+  require_gps_for_students: boolean;
+  require_on_campus: boolean;
+  max_gps_accuracy_m: number;
   grooming_ai_ready?: boolean;
   grooming_ai_provider?: string | null;
   grooming_ai_model?: string | null;
@@ -282,6 +285,33 @@ export default function PunchAdminPage() {
             <button type="button" onClick={useMyLocation} className="mt-2 text-sm text-sky-700 underline">
               Use my current location as academy
             </button>
+
+            <div className="mt-4 space-y-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!settings.require_gps_for_staff}
+                  onChange={(e) => setSettings({ ...settings, require_gps_for_staff: e.target.checked })}
+                />
+                Require GPS for staff
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={settings.require_gps_for_students !== false}
+                  onChange={(e) => setSettings({ ...settings, require_gps_for_students: e.target.checked })}
+                />
+                Require GPS for students
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={settings.require_on_campus !== false}
+                  onChange={(e) => setSettings({ ...settings, require_on_campus: e.target.checked })}
+                />
+                Block punch outside campus geofence (stops photo-of-QR from home)
+              </label>
+            </div>
 
             <button
               type="submit"

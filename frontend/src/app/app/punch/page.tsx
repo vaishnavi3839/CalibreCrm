@@ -237,16 +237,34 @@ export default function PunchPage() {
     setResult(null);
     try {
       if (!qrToken.trim()) throw new Error("Scan the branch QR first");
+
+      // Fresh GPS right before punch (blocks photo-of-QR from elsewhere)
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("GPS is required. Enable location services."));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error("GPS permission denied. Enable location on campus.")), {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        });
+      });
+      const freshCoords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      };
+      setCoords(freshCoords);
+
       const selfie = captureSelfie();
       if (!selfie) throw new Error("Could not capture selfie");
 
       const form = new FormData();
       form.append("qr_token", qrToken.trim());
-      if (coords) {
-        form.append("latitude", String(coords.lat));
-        form.append("longitude", String(coords.lng));
-        if (coords.accuracy != null) form.append("accuracy_m", String(coords.accuracy));
-      }
+      form.append("latitude", String(freshCoords.lat));
+      form.append("longitude", String(freshCoords.lng));
+      if (freshCoords.accuracy != null) form.append("accuracy_m", String(freshCoords.accuracy));
       form.append("selfie", selfie, "selfie.jpg");
 
       const res = await api<PunchResult>("/api/v1/punch", { method: "POST", body: form });
@@ -259,7 +277,13 @@ export default function PunchPage() {
       setPopup("done");
       setStep("scan");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Punch failed");
+      const msg = err instanceof Error ? err.message : "Punch failed";
+      setError(msg);
+      // Stay on selfie step for scan/grooming/GPS failures so user can retry
+      if (/scan failed|selfie|gps|campus|location|geofence|lighting/i.test(msg)) {
+        setStep("selfie");
+        setPopup(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -267,7 +291,7 @@ export default function PunchPage() {
 
   return (
     <RequireAuth>
-      <AppShell title="QR Punch" subtitle="IN and OUT both need a QR scan → selfie → punch">
+      <AppShell title="QR Punch" subtitle="Scan campus QR on-site → GPS check → selfie → punch (photo of QR from elsewhere is blocked)">
         {popup && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/55 p-4 backdrop-blur-[2px]">
             <div className="w-full max-w-sm animate-rise rounded-2xl bg-white p-6 text-center shadow-xl">

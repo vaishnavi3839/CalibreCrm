@@ -39,7 +39,7 @@ def grooming_ai_status() -> dict[str, Any]:
         return {
             "ready": True,
             "provider": "gemini",
-            "model": settings.grooming_vision_model or "gemini-flash-latest",
+            "model": settings.grooming_vision_model or "gemini-2.0-flash",
         }
     if settings.openai_api_key:
         return {
@@ -66,11 +66,11 @@ def _quality_check(image_bytes: bytes) -> tuple[bool, str, Image.Image]:
     mean = sum(stat.mean) / 3
     stddev = sum(stat.stddev) / 3
 
-    if mean < 40:
+    if mean < 28:
         return False, "Selfie too dark — improve lighting and retake", img
-    if mean > 235:
+    if mean > 245:
         return False, "Selfie overexposed — retake with less glare", img
-    if stddev < 10:
+    if stddev < 6:
         return False, "Selfie looks blank or blurry — face the camera and retake", img
 
     return True, "ok", img

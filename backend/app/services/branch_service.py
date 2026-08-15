@@ -154,26 +154,35 @@ async def deactivate_branch(db: AsyncSession, *, actor: User, branch_id: UUID) -
 
 
 async def ensure_default_branches(db: AsyncSession) -> None:
-    """Seed 4 sample branches if none exist (admin can edit GPS)."""
+    """Seed Headquarters only if no branches exist; deactivate sample East/North/Hall branches."""
     existing = await db.scalar(select(Branch.id).limit(1))
-    if existing:
-        return
-    samples = [
-        ("BR-HQ", "Headquarters", 28.6139, 77.2090, "Main HQ Campus"),
-        ("BR-NORTH", "North Branch", 28.7041, 77.1025, "North Campus"),
-        ("BR-SOUTH", "South Branch", 28.5355, 77.3910, "South Campus"),
-        ("BR-EAST", "East Branch", 28.6129, 77.2773, "East Campus"),
-    ]
-    for code, name, lat, lng, address in samples:
+    if not existing:
         db.add(
             Branch(
-                code=code,
-                name=name,
-                address=address,
-                latitude=lat,
-                longitude=lng,
+                code="BR-HQ",
+                name="Headquarters",
+                address="Main Campus",
+                latitude=28.6139,
+                longitude=77.2090,
                 geofence_radius_m=200,
                 punch_token=secrets.token_urlsafe(24),
             )
         )
+        await db.flush()
+
+    # Remove demo campuses the academy doesn't use
+    sample_codes = {"BR-NORTH", "BR-EAST"}
+    rows = (await db.execute(select(Branch).where(Branch.is_active.is_(True)))).scalars().all()
+    for branch in rows:
+        name_l = (branch.name or "").lower().strip()
+        addr_l = (branch.address or "").lower()
+        if branch.code in sample_codes:
+            branch.is_active = False
+            continue
+        if name_l in {"hall", "exam hall", "exam hall 1"} or name_l.endswith(" hall"):
+            branch.is_active = False
+            continue
+        if "east campus" in addr_l or "north campus" in addr_l:
+            if branch.code != "BR-HQ":
+                branch.is_active = False
     await db.flush()

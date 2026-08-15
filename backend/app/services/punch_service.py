@@ -57,6 +57,9 @@ DEFAULT_SETTINGS = {
     "geofence_radius_m": 200,
     "require_selfie": True,
     "require_gps_for_staff": True,
+    "require_gps_for_students": True,
+    "require_on_campus": True,
+    "max_gps_accuracy_m": 80,
 }
 
 
@@ -82,6 +85,47 @@ def _ist_today() -> date:
     return _ist_now().date()
 
 
+async def _ensure_student_batch(db: AsyncSession, student: Student) -> Optional[UUID]:
+    """Guarantee a batch so QR punches always write AttendanceRecord history."""
+    if student.batch_id:
+        return student.batch_id
+
+    from app.models import Batch, Course
+
+    course_id = student.course_id
+    if not course_id:
+        course = await db.scalar(select(Course).where(Course.is_active.is_(True)).order_by(Course.created_at).limit(1))
+        if not course:
+            return None
+        course_id = course.id
+        student.course_id = course_id
+
+    batch = await db.scalar(
+        select(Batch).where(
+            Batch.course_id == course_id,
+            Batch.name == "General Attendance",
+            Batch.is_active.is_(True),
+        )
+    )
+    if not batch:
+        code = f"GEN-{str(course_id).replace('-', '')[:8].upper()}"
+        existing_code = await db.scalar(select(Batch.id).where(Batch.code == code))
+        if existing_code:
+            code = f"GEN-{secrets.token_hex(4).upper()}"
+        batch = Batch(
+            course_id=course_id,
+            name="General Attendance",
+            code=code,
+            status="active",
+        )
+        db.add(batch)
+        await db.flush()
+
+    student.batch_id = batch.id
+    await db.flush()
+    return batch.id
+
+
 async def _sync_student_attendance_from_punch(
     db: AsyncSession,
     *,
@@ -89,28 +133,30 @@ async def _sync_student_attendance_from_punch(
     punch: PunchEvent,
 ) -> Optional[str]:
     """Mirror QR IN punch into AttendanceRecord so student/parent pages show present/late."""
-    if not student.batch_id:
-        return None
+    batch_id = await _ensure_student_batch(db, student)
+    if not batch_id:
+        return "Attendance history skipped — create a course/batch and assign this student"
 
     status = AttendanceStatus.LATE if punch.is_late else AttendanceStatus.PRESENT
     remarks = (
-        f"QR punch IN late +{punch.late_minutes}m"
+        f"QR punch IN late +{punch.late_minutes}m @ {punch.meta_json.get('branch_name') if punch.meta_json else 'branch'}"
         if punch.is_late
-        else "QR punch IN"
+        else f"QR punch IN @ {(punch.meta_json or {}).get('branch_name') or 'branch'}"
     )
 
     session = await db.scalar(
         select(AttendanceSession)
         .where(
-            AttendanceSession.batch_id == student.batch_id,
+            AttendanceSession.batch_id == batch_id,
             AttendanceSession.session_date == punch.punch_date,
+            AttendanceSession.subject_id.is_(None),
         )
         .order_by(AttendanceSession.created_at.desc())
         .limit(1)
     )
     if not session:
         session = AttendanceSession(
-            batch_id=student.batch_id,
+            batch_id=batch_id,
             subject_id=None,
             session_date=punch.punch_date,
             notes="Auto-created from QR punch",
@@ -118,63 +164,60 @@ async def _sync_student_attendance_from_punch(
         db.add(session)
         await db.flush()
 
-    record = await db.scalar(
-        select(AttendanceRecord).where(
-            AttendanceRecord.session_id == session.id,
-            AttendanceRecord.student_id == student.id,
+    # Prefer updating any same-day record for this student (manual or QR) to one status
+    day_records = (
+        await db.execute(
+            select(AttendanceRecord)
+            .join(AttendanceSession)
+            .where(
+                AttendanceRecord.student_id == student.id,
+                AttendanceSession.session_date == punch.punch_date,
+            )
+            .order_by(AttendanceRecord.created_at.desc())
         )
-    )
-    if record:
-        if record.status == AttendanceStatus.EXCUSED:
+    ).scalars().all()
+
+    if day_records:
+        primary = day_records[0]
+        if primary.status == AttendanceStatus.EXCUSED:
             return "Attendance already excused"
-        record.status = status
-        record.remarks = remarks
+        primary.status = status
+        primary.remarks = remarks
+        # Soft-dedupe: mark older same-day duplicates as remarks only by aligning status
+        for extra in day_records[1:]:
+            if extra.status != AttendanceStatus.EXCUSED:
+                extra.status = status
+                extra.remarks = f"Synced with QR punch ({remarks})"
     else:
-        day_records = (
-            await db.execute(
-                select(AttendanceRecord)
-                .join(AttendanceSession)
-                .where(
-                    AttendanceRecord.student_id == student.id,
-                    AttendanceSession.session_date == punch.punch_date,
-                )
+        db.add(
+            AttendanceRecord(
+                session_id=session.id,
+                student_id=student.id,
+                status=status,
+                remarks=remarks,
             )
-        ).scalars().all()
-        if day_records:
-            for r in day_records:
-                if r.status != AttendanceStatus.EXCUSED:
-                    r.status = status
-                    r.remarks = remarks
-        else:
-            db.add(
-                AttendanceRecord(
-                    session_id=session.id,
-                    student_id=student.id,
-                    status=status,
-                    remarks=remarks,
-                )
-            )
+        )
 
     await db.flush()
 
-    total = int(
-        await db.scalar(
-            select(func.count()).select_from(AttendanceRecord).where(AttendanceRecord.student_id == student.id)
+    # Recalc % from unique days
+    day_rows = (
+        await db.execute(
+            select(AttendanceSession.session_date, AttendanceRecord.status)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .where(AttendanceRecord.student_id == student.id)
+            .order_by(AttendanceSession.session_date.desc(), AttendanceRecord.created_at.desc())
         )
-        or 0
-    )
-    present = int(
-        await db.scalar(
-            select(func.count())
-            .select_from(AttendanceRecord)
-            .where(
-                AttendanceRecord.student_id == student.id,
-                AttendanceRecord.status.in_(
-                    [AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.EXCUSED]
-                ),
-            )
-        )
-        or 0
+    ).all()
+    by_day: dict = {}
+    for session_date, st in day_rows:
+        if session_date not in by_day:
+            by_day[session_date] = st
+    total = len(by_day)
+    present = sum(
+        1
+        for s in by_day.values()
+        if s in {AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.EXCUSED}
     )
     if total > 0:
         student.attendance_pct = round(100.0 * present / total, 1)
@@ -511,17 +554,15 @@ async def record_punch(
     if token.startswith("caa-punch:"):
         token = token.split(":", 1)[1]
 
-    # Prefer branch QR match; allow legacy global QR only if it matches assigned branch token
+    # Prefer branch QR match — legacy global academy QR is disabled (photo-of-QR abuse)
     qr_branch = await db.scalar(
         select(Branch).where(Branch.punch_token == token, Branch.is_active.is_(True))
     )
     if not qr_branch:
-        # legacy global academy QR (old flow)
-        active = await get_or_create_active_qr(db)
-        if token != active.token:
-            raise UnauthorizedError("Invalid punch QR. Use the QR for your assigned branch.")
-        qr_branch = assigned_branch
-    elif qr_branch.id != assigned_branch.id:
+        raise UnauthorizedError(
+            "Invalid punch QR. Scan the live QR at your assigned campus branch."
+        )
+    if qr_branch.id != assigned_branch.id:
         raise UnauthorizedError(
             f"Wrong branch QR. You are assigned to {assigned_branch.name}. "
             f"Scan the QR at your branch only."
@@ -556,13 +597,30 @@ async def record_punch(
 
     on_campus = None
     distance_m = None
-    if latitude is not None and longitude is not None:
+    require_gps = bool(
+        (is_staff and settings.get("require_gps_for_staff", True))
+        or (is_student and settings.get("require_gps_for_students", True))
+    )
+    if latitude is None or longitude is None:
+        if require_gps:
+            raise ValidationAppError(
+                "GPS is required for punch. Enable location and try again on campus."
+            )
+    else:
+        if accuracy_m is not None and accuracy_m > float(settings.get("max_gps_accuracy_m", 80)):
+            raise ValidationAppError(
+                "GPS signal too weak / inaccurate. Move outdoors near the campus QR and retry."
+            )
         distance_m = haversine_m(
             latitude, longitude, float(assigned_branch.latitude), float(assigned_branch.longitude)
         )
         on_campus = distance_m <= float(assigned_branch.geofence_radius_m)
-    elif is_staff and settings.get("require_gps_for_staff"):
-        raise ValidationAppError("GPS location is required for staff punch")
+        if settings.get("require_on_campus", True) and not on_campus:
+            raise ValidationAppError(
+                f"Punch blocked — you are ~{int(distance_m)}m from {assigned_branch.name}. "
+                f"You must be within {int(assigned_branch.geofence_radius_m)}m of campus "
+                "(scanning a photo of the QR from elsewhere is not allowed)."
+            )
 
     selfie_url = None
     grooming_ok = None
@@ -572,6 +630,12 @@ async def record_punch(
         if not selfie_bytes:
             raise ValidationAppError("Selfie is required for punch")
         grooming_ok, grooming_notes, grooming_details = await analyze_grooming(selfie_bytes)
+        issues = [str(i) for i in (grooming_details.get("issues") or [])]
+        # Block punch on unusable selfie — force retake (this is the "scan failed" path)
+        if grooming_ok is False and issues == ["photo_quality"]:
+            raise ValidationAppError(
+                f"Scan failed — {grooming_notes or 'retake selfie with better lighting and a clear face'}"
+            )
         selfie_url = save_selfie(user.id, selfie_bytes)
 
     punch = PunchEvent(
@@ -618,17 +682,15 @@ async def record_punch(
     if grooming_ok is False:
         issues = [str(i) for i in (grooming_details.get("issues") or [])]
         # ₹500 only for real grooming fails — not for dark/blurry photo rejects
-        chargeable = (not issues) or any(
-            i in {"hair", "facial_grooming", "appearance"} for i in issues
-        )
+        chargeable = any(i in {"hair", "facial_grooming", "appearance"} for i in issues)
         if chargeable:
             note = await _apply_grooming_fine(
                 db, user=user, staff=staff, student=student, punch=punch, settings=settings
             )
             if note:
                 effects.append(note)
-        else:
-            effects.append("Selfie rejected for photo quality — retake (no fine)")
+        elif "photo_quality" in issues:
+            effects.append("Selfie photo quality was poor — no fine")
 
     if student and punch_type == PunchType.IN:
         note = await _sync_student_attendance_from_punch(db, student=student, punch=punch)

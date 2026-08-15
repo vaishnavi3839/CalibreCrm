@@ -298,7 +298,7 @@ export default function BranchesPage() {
                     className="mt-1 w-full rounded-xl border border-cloud-200 px-3 py-2"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="North Campus"
+                    placeholder="Main campus address"
                   />
                 </label>
                 <label className="font-medium">

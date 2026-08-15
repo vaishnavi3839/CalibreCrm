@@ -13,6 +13,8 @@ const emptyForm = {
   student_code: "",
   course_id: "",
   batch_id: "",
+  batch_mode: "existing" as "existing" | "new",
+  new_batch_name: "",
   branch_id: "",
   password: "Password123!",
 };
@@ -59,10 +61,28 @@ export default function StudentsPage() {
       student_code: s.student_code || "",
       course_id: s.course_id || "",
       batch_id: s.batch_id || "",
+      batch_mode: "existing",
+      new_batch_name: "",
       branch_id: s.branch_id || "",
       password: "",
     });
     setOpen(true);
+  }
+
+  async function resolveBatchId(): Promise<string | null> {
+    if (form.batch_mode === "new") {
+      const name = form.new_batch_name.trim();
+      if (!name) throw new Error("Enter a new batch name");
+      if (!form.course_id) throw new Error("Select a course before creating a batch");
+      const res = await api<{ id: string }>("/api/v1/batches", {
+        method: "POST",
+        body: JSON.stringify({ name, course_id: form.course_id }),
+      });
+      const list = await api<{ items: any[] }>("/api/v1/batches");
+      setBatches(list.data.items);
+      return res.data.id;
+    }
+    return form.batch_id || null;
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -72,6 +92,7 @@ export default function StudentsPage() {
     setMessage("");
     setCreatedCreds(null);
     try {
+      const batchId = await resolveBatchId();
       if (editingId) {
         const body: Record<string, unknown> = {
           full_name: form.full_name,
@@ -79,10 +100,10 @@ export default function StudentsPage() {
           phone: form.phone || null,
           student_code: form.student_code || null,
           course_id: form.course_id || null,
-          batch_id: form.batch_id || null,
+          batch_id: batchId,
           branch_id: form.branch_id || null,
           clear_course: !form.course_id,
-          clear_batch: !form.batch_id,
+          clear_batch: !batchId,
         };
         if (form.password.trim()) body.password = form.password;
         await api(`/api/v1/students/${editingId}`, { method: "PUT", body: JSON.stringify(body) });
@@ -96,17 +117,16 @@ export default function StudentsPage() {
             phone: form.phone || null,
             student_code: form.student_code || null,
             course_id: form.course_id || null,
-            batch_id: form.batch_id || null,
+            batch_id: batchId,
             branch_id: form.branch_id || null,
             password: form.password || null,
           }),
         });
+        setCreatedCreds({ email: form.email, password: form.password || "Password123!" });
         setMessage(res.message || "Student created");
-        setCreatedCreds({ email: res.data.email, password: res.data.temporary_password });
       }
-      setForm(emptyForm);
-      setEditingId(null);
       setOpen(false);
+      setEditingId(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -224,12 +244,42 @@ export default function StudentsPage() {
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                <select className="rounded-xl border border-cloud-200 px-3 py-2" value={form.batch_id} onChange={(e) => setForm({ ...form, batch_id: e.target.value })}>
-                  <option value="">Batch (optional)</option>
-                  {batches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                <div className="rounded-xl border border-cloud-200 p-3">
+                  <div className="mb-2 flex gap-3 text-sm">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={form.batch_mode === "existing"}
+                        onChange={() => setForm({ ...form, batch_mode: "existing" })}
+                      />
+                      Existing batch
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={form.batch_mode === "new"}
+                        onChange={() => setForm({ ...form, batch_mode: "new" })}
+                      />
+                      New batch
+                    </label>
+                  </div>
+                  {form.batch_mode === "existing" ? (
+                    <select className="w-full rounded-xl border border-cloud-200 px-3 py-2" value={form.batch_id} onChange={(e) => setForm({ ...form, batch_id: e.target.value })}>
+                      <option value="">Batch (optional)</option>
+                      {batches.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      required={form.batch_mode === "new"}
+                      placeholder="New batch name (e.g. CPL Batch B)"
+                      className="w-full rounded-xl border border-cloud-200 px-3 py-2"
+                      value={form.new_batch_name}
+                      onChange={(e) => setForm({ ...form, new_batch_name: e.target.value })}
+                    />
+                  )}
+                </div>
                 <select required className="rounded-xl border border-cloud-200 px-3 py-2" value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
                   <option value="">Punch branch *</option>
                   {branches.map((b) => (

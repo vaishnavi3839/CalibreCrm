@@ -32,19 +32,40 @@ export default function MarkAttendancePage() {
 
   useEffect(() => {
     if (!batchId) return;
-    api<{ items: any[] }>(`/api/v1/students?batch_id=${batchId}`)
-      .then((r) =>
-        setStudents(
-          r.data.items.map((s) => ({
-            id: s.id,
-            name: s.name || s.student_code,
-            student_code: s.student_code,
-            status: "present" as const,
-          }))
-        )
-      )
-      .catch(() => setStudents([]));
-  }, [batchId]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api<{ items: any[] }>(`/api/v1/students?batch_id=${batchId}`);
+        if (cancelled) return;
+        const base = r.data.items.map((s) => ({
+          id: s.id,
+          name: s.name || s.student_code,
+          student_code: s.student_code,
+          status: "present" as const,
+        }));
+        // Prefill today's existing marks so re-save updates instead of looking blank
+        try {
+          const hist = await api<{ records: { student_id: string; status: string }[] }>(
+            `/api/v1/attendance/session?batch_id=${batchId}&session_date=${sessionDate}`
+          );
+          const map = new Map(hist.data.records.map((x) => [x.student_id, x.status]));
+          setStudents(
+            base.map((s) => ({
+              ...s,
+              status: (map.get(s.id) as StudentRow["status"]) || s.status,
+            }))
+          );
+        } catch {
+          setStudents(base);
+        }
+      } catch {
+        if (!cancelled) setStudents([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [batchId, sessionDate]);
 
   function setAll(status: StudentRow["status"]) {
     setStudents((prev) => prev.map((s) => ({ ...s, status })));
@@ -56,20 +77,27 @@ export default function MarkAttendancePage() {
     setError("");
     setMessage("");
     try {
-      await api("/api/v1/attendance", {
-        method: "POST",
-        body: JSON.stringify({
-          batch_id: batchId,
-          session_date: sessionDate,
-          records: students.map((s) => ({ student_id: s.id, status: s.status })),
-        }),
-      });
+      const res = await api<{ session_id: string; updated?: boolean; parents_notified?: number }>(
+        "/api/v1/attendance",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            batch_id: batchId,
+            session_date: sessionDate,
+            records: students.map((s) => ({ student_id: s.id, status: s.status })),
+          }),
+        }
+      );
       const absentCount = students.filter((s) => s.status === "absent").length;
+      const notified = res.data.parents_notified ?? 0;
       setMessage(
-        `Attendance saved for ${students.length} students.` +
-          (absentCount
-            ? ` Parents of ${absentCount} absent student(s) were notified in-app.`
-            : "")
+        (res.data.updated ? "Attendance updated" : "Attendance saved") +
+          ` for ${students.length} students.` +
+          (notified
+            ? ` Parents newly notified for ${notified} absent student(s).`
+            : absentCount
+              ? " (Re-saving the same absents does not notify parents again.)"
+              : "")
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save attendance");
