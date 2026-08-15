@@ -32,6 +32,14 @@ Respond with ONLY compact JSON (no markdown):
 {"ok":true|false,"notes":"one short sentence","issues":["hair"|"facial_grooming"|"appearance"|"photo_quality"]}
 """
 
+# Prefer aliases that stay current; older pinned IDs (gemini-2.0-flash) return 404.
+DEFAULT_GEMINI_MODELS = (
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+)
+
 
 def grooming_ai_status() -> dict[str, Any]:
     settings = get_settings()
@@ -39,7 +47,7 @@ def grooming_ai_status() -> dict[str, Any]:
         return {
             "ready": True,
             "provider": "gemini",
-            "model": settings.grooming_vision_model or "gemini-2.0-flash",
+            "model": settings.grooming_vision_model or DEFAULT_GEMINI_MODELS[0],
         }
     if settings.openai_api_key:
         return {
@@ -48,7 +56,6 @@ def grooming_ai_status() -> dict[str, Any]:
             "model": settings.grooming_vision_model or "gpt-4o-mini",
         }
     return {"ready": False, "provider": None, "model": None}
-
 
 
 def _quality_check(image_bytes: bytes) -> tuple[bool, str, Image.Image]:
@@ -106,7 +113,31 @@ def _parse_vision_json(text: str) -> dict[str, Any]:
     return {"ok": False, "notes": "Could not read grooming result — retake selfie", "issues": ["photo_quality"]}
 
 
-async def _call_gemini(img: Image.Image, api_key: str, model: str) -> dict[str, Any]:
+def _extract_gemini_text(body: dict[str, Any]) -> str:
+    """Pull text from candidates, including multi-part / thinking responses."""
+    candidates = body.get("candidates") or []
+    if not candidates:
+        feedback = body.get("promptFeedback") or {}
+        block = feedback.get("blockReason") or body.get("error", {}).get("message")
+        raise RuntimeError(f"Gemini blocked or empty response{': ' + str(block) if block else ''}")
+
+    cand = candidates[0] or {}
+    finish = cand.get("finishReason")
+    parts = (cand.get("content") or {}).get("parts") or []
+    text = ""
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if part.get("text"):
+            text += part["text"]
+    if text.strip():
+        return text
+    if finish and finish not in {"STOP", "MAX_TOKENS"}:
+        raise RuntimeError(f"Gemini finished with {finish}")
+    raise RuntimeError("Gemini returned empty grooming response")
+
+
+async def _call_gemini_once(img: Image.Image, api_key: str, model: str) -> dict[str, Any]:
     b64 = _jpeg_b64(img)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
@@ -120,12 +151,15 @@ async def _call_gemini(img: Image.Image, api_key: str, model: str) -> dict[str, 
         ],
         "generationConfig": {
             "temperature": 0.1,
-            "maxOutputTokens": 1024,
+            "maxOutputTokens": 2048,
             "responseMimeType": "application/json",
         },
     }
     async with httpx.AsyncClient(timeout=60.0) as client:
         res = await client.post(url, params={"key": api_key}, json=payload)
+        if res.status_code >= 400:
+            # Some keys prefer header auth
+            res = await client.post(url, headers={"x-goog-api-key": api_key}, json=payload)
         if res.status_code >= 400:
             detail = ""
             try:
@@ -134,14 +168,34 @@ async def _call_gemini(img: Image.Image, api_key: str, model: str) -> dict[str, 
                 detail = res.text[:200]
             raise RuntimeError(f"Gemini {res.status_code}: {detail}")
         body = res.json()
-    parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    text = ""
-    for part in parts:
-        if isinstance(part, dict) and part.get("text"):
-            text += part["text"]
-    if not text.strip():
-        raise RuntimeError("Gemini returned empty grooming response")
-    return _parse_vision_json(text)
+    return _parse_vision_json(_extract_gemini_text(body))
+
+
+async def _call_gemini(img: Image.Image, api_key: str, model: str) -> dict[str, Any]:
+    """Try preferred model, then known-good flash aliases on 404/unavailable."""
+    tried: list[str] = []
+    models: list[str] = []
+    for m in (model, *DEFAULT_GEMINI_MODELS):
+        if m and m not in models:
+            models.append(m)
+
+    last_err: Optional[Exception] = None
+    for m in models:
+        tried.append(m)
+        try:
+            return await _call_gemini_once(img, api_key, m)
+        except Exception as exc:
+            last_err = exc
+            msg = str(exc).lower()
+            # Fall through on missing/retired models; re-raise hard auth errors after all tries
+            if "404" in msg or "no longer available" in msg or "not found" in msg or "empty" in msg:
+                logger.warning("Gemini model %s failed: %s", m, exc)
+                continue
+            if "401" in msg or "403" in msg or "api key" in msg:
+                raise
+            logger.warning("Gemini model %s failed: %s", m, exc)
+            continue
+    raise RuntimeError(f"All Gemini models failed ({', '.join(tried)}): {last_err}")
 
 
 async def _call_openai(img: Image.Image, api_key: str, model: str) -> dict[str, Any]:
@@ -199,11 +253,11 @@ async def analyze_grooming(image_bytes: bytes) -> tuple[Optional[bool], str, dic
             result = await _call_openai(img, settings.openai_api_key, model)
     except Exception as exc:
         logger.exception("Grooming vision API failed")
-        # Don't fine people when the AI provider is down / out of quota
+        err = str(exc)[:180]
         return (
             None,
-            f"Grooming AI temporarily unavailable — selfie saved for review ({exc.__class__.__name__})",
-            {"issues": [], "provider": provider, "error": str(exc)[:200], "ai_ready": True},
+            f"Grooming AI temporarily unavailable — selfie saved for review. {err}",
+            {"issues": [], "provider": provider, "error": err, "ai_ready": True},
         )
 
     ok_raw = result.get("ok")
@@ -230,4 +284,4 @@ async def analyze_grooming(image_bytes: bytes) -> tuple[Optional[bool], str, dic
         if labels and "hair" not in notes.lower() and "facial" not in notes.lower():
             notes = f"{notes} (issues: {', '.join(labels[:3])})"
 
-    return ok, notes[:250], {"issues": issues, "provider": provider, "ai_ready": True, "raw": result}
+    return ok, notes[:250], {"issues": issues, "provider": provider, "ai_ready": True, "raw": result, "model": model}

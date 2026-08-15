@@ -19,12 +19,14 @@ type PunchResult = {
   grooming_ai_ready?: boolean;
   effects: string[];
   branch?: { name: string; code: string };
+  next_punch_type?: "in" | "out";
 };
 
 type PunchRow = {
   id: string;
   punch_type: string;
   punched_at: string;
+  punch_date?: string;
   is_late: boolean;
   late_minutes: number;
   on_campus: boolean | null;
@@ -49,10 +51,14 @@ export default function PunchPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<PunchResult | null>(null);
   const [history, setHistory] = useState<PunchRow[]>([]);
+  const [nextPunchType, setNextPunchType] = useState<"in" | "out">("in");
 
   async function loadHistory() {
-    const res = await api<{ items: PunchRow[] }>("/api/v1/punch/me");
+    const res = await api<{ items: PunchRow[]; next_punch_type?: "in" | "out" }>("/api/v1/punch/me");
     setHistory(res.data.items);
+    if (res.data.next_punch_type === "in" || res.data.next_punch_type === "out") {
+      setNextPunchType(res.data.next_punch_type);
+    }
   }
 
   useEffect(() => {
@@ -269,10 +275,15 @@ export default function PunchPage() {
 
       const res = await api<PunchResult>("/api/v1/punch", { method: "POST", body: form });
       setResult(res.data);
+      if (res.data.next_punch_type === "in" || res.data.next_punch_type === "out") {
+        setNextPunchType(res.data.next_punch_type);
+      } else {
+        setNextPunchType(res.data.punch_type === "in" ? "out" : "in");
+      }
       await loadHistory();
       stream?.getTracks().forEach((t) => t.stop());
       setStream(null);
-      // Require a fresh QR scan for the next IN or OUT punch
+      // Require a fresh QR scan for the next punch
       setQrToken("");
       setPopup("done");
       setStep("scan");
@@ -302,7 +313,7 @@ export default function PunchPage() {
                   </div>
                   <h3 className="mt-4 text-xl font-semibold text-navy-900">QR verified</h3>
                   <p className="mt-2 text-sm text-muted">
-                    Next: scan your face for a grooming check.
+                    Next: face scan, then <strong>Punch {nextPunchType.toUpperCase()}</strong>.
                   </p>
                 </>
               ) : popup === "grooming" ? (
@@ -330,12 +341,12 @@ export default function PunchPage() {
                   <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-700">
                     ✓
                   </div>
-                  <h3 className="mt-4 text-xl font-semibold text-navy-900">Attendance taken</h3>
+                  <h3 className="mt-4 text-xl font-semibold text-navy-900">
+                    {result?.punch_type === "out" ? "Punched OUT" : "Punched IN"}
+                  </h3>
                   <p className="mt-2 text-sm text-muted">
                     {result
-                      ? `${result.punch_type.toUpperCase()}${
-                          result.is_late ? ` · LATE +${result.late_minutes}m` : " · on time"
-                        }${
+                      ? `${result.is_late ? `LATE +${result.late_minutes}m` : "On time"}${
                           result.grooming_ok === false
                             ? " · Grooming failed"
                             : result.grooming_ok
@@ -343,6 +354,11 @@ export default function PunchPage() {
                               : ""
                         }`
                       : "Punch saved successfully."}
+                  </p>
+                  <p className="mt-3 rounded-xl bg-navy-900/5 px-3 py-2 text-sm text-navy-900">
+                    {result?.punch_type === "in"
+                      ? "When you leave, scan the QR again to Punch OUT."
+                      : "When you return tomorrow, scan the QR to Punch IN."}
                   </p>
                   <button
                     type="button"
@@ -358,16 +374,23 @@ export default function PunchPage() {
           </div>
         )}
 
-        <div className="mb-4 flex gap-2 text-sm">
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
           <span
             className={`rounded-full px-3 py-1 ${step === "scan" && !popup ? "bg-navy-900 text-white" : "bg-cloud-100 text-muted"}`}
           >
-            1. Scan QR (IN or OUT)
+            1. Scan QR
           </span>
           <span
             className={`rounded-full px-3 py-1 ${step === "selfie" || popup === "grooming" ? "bg-navy-900 text-white" : "bg-cloud-100 text-muted"}`}
           >
             2. Face / grooming
+          </span>
+          <span
+            className={`rounded-full px-3 py-1 font-semibold ${
+              nextPunchType === "out" ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-900"
+            }`}
+          >
+            Next action: Punch {nextPunchType.toUpperCase()}
           </span>
         </div>
 
@@ -375,9 +398,13 @@ export default function PunchPage() {
           <div className="rounded-2xl border border-cloud-200 bg-white p-5">
             {step === "scan" ? (
               <>
-                <h3 className="font-semibold text-navy-900">Scan branch QR</h3>
+                <h3 className="font-semibold text-navy-900">
+                  Scan QR to Punch {nextPunchType.toUpperCase()}
+                </h3>
                 <p className="mt-1 text-sm text-muted">
-                  Scan for <strong>IN</strong> when arriving and again for <strong>OUT</strong> when leaving.
+                  {nextPunchType === "in"
+                    ? "You are not punched in yet. Scan the campus QR to Punch IN."
+                    : "You are currently IN. Scan the campus QR again to Punch OUT when leaving."}
                 </p>
 
                 {result && (
@@ -386,7 +413,9 @@ export default function PunchPage() {
                       Last punch: <strong>{result.punch_type.toUpperCase()}</strong>
                       {result.branch ? ` · ${result.branch.name}` : ""}
                       {result.is_late ? ` · LATE +${result.late_minutes}m` : " · on time"}
-                      . Scan QR again for the next punch.
+                    </div>
+                    <div className="mt-1 font-medium">
+                      Next: Punch {nextPunchType.toUpperCase()} — scan the QR when ready.
                     </div>
                     <div className="mt-1">
                       Grooming:{" "}
@@ -427,7 +456,7 @@ export default function PunchPage() {
                   professional appearance. Failed grooming = ₹500 fine (bad photo alone = retake, no fine).
                 </p>
                 <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                  ✓ Attendance QR verified — complete face scan to finish punch
+                  ✓ QR verified — finish face scan to <strong>Punch {nextPunchType.toUpperCase()}</strong>
                 </p>
 
                 <div className="mt-4 overflow-hidden rounded-xl bg-black">
@@ -492,9 +521,9 @@ export default function PunchPage() {
                     disabled={busy}
                     onClick={onPunch}
                     className="flex-1 rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                    style={{ backgroundColor: "#0a1628" }}
+                    style={{ backgroundColor: nextPunchType === "out" ? "#b45309" : "#0a1628" }}
                   >
-                    {busy ? "Punching…" : "Punch IN / OUT"}
+                    {busy ? "Punching…" : `Punch ${nextPunchType.toUpperCase()}`}
                   </button>
                 </div>
               </>

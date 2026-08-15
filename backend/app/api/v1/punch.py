@@ -120,7 +120,13 @@ async def punch_in_out(
 
 @router.get("/me")
 async def my_punch_history(user: CurrentUser, db: DbSession):
-    return success({"items": await punch_service.my_punches(db, user_id=user.id)})
+    items = await punch_service.my_punches(db, user_id=user.id)
+    return success(
+        {
+            "items": items,
+            "next_punch_type": punch_service.next_punch_type_for_today(items),
+        }
+    )
 
 
 @router.get("/presence")

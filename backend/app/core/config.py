@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     # Vision AI for punch selfie grooming (hair, facial grooming, appearance)
     gemini_api_key: str = ""
     openai_api_key: str = ""
-    grooming_vision_model: str = ""  # default: gemini-2.0-flash or gpt-4o-mini
+    grooming_vision_model: str = "gemini-flash-latest"  # must be a current generateContent model
 
     rate_limit_per_minute: int = 60
     hot_lead_contact_hours: int = 2

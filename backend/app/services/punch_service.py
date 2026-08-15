@@ -740,6 +740,8 @@ async def record_punch(
         "grooming_issues": grooming_details.get("issues") or [],
         "grooming_ai_ready": bool(grooming_details.get("ai_ready")),
         "effects": effects,
+        # After this punch, the next action is the opposite
+        "next_punch_type": "out" if punch.punch_type == PunchType.IN else "in",
     }
 
 
@@ -942,3 +944,12 @@ async def my_punches(db: AsyncSession, *, user_id: UUID, limit: int = 30) -> lis
         }
         for r in rows
     ]
+
+
+def next_punch_type_for_today(rows: list[dict]) -> str:
+    """Given punch history (newest first), return the next action: in or out."""
+    today = _ist_now().date().isoformat()
+    for r in rows:
+        if r.get("punch_date") == today:
+            return "out" if r.get("punch_type") == "in" else "in"
+    return "in"
