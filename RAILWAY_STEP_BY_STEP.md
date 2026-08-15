@@ -188,7 +188,7 @@ BACKEND_URL=https://temporary-will-change-later
 CORS_ORIGINS=https://temporary-will-change-later
 GEMINI_API_KEY=YOUR_GEMINI_KEY
 GROOMING_VISION_MODEL=gemini-flash-latest
-GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_ID=113963656390-odafike631l3st0onl83t4181b0vj75m.apps.googleusercontent.com
 ```
 
 Replace:
@@ -196,6 +196,7 @@ Replace:
 - `DATABASE_URL` / `DATABASE_URL_SYNC` with your real Postgres URLs  
 - `JWT_SECRET_KEY` with a long random string  
 - `GEMINI_API_KEY` with your key  
+- Keep `GOOGLE_CLIENT_ID` as the Google OAuth **Web client** ID from Google Cloud Console  
 
 Generate JWT secret on your Mac:
 
@@ -264,10 +265,12 @@ npm run start -- --hostname 0.0.0.0 --port $PORT
 ```text
 API_PROXY_TARGET=https://api-production-xxxx.up.railway.app
 NEXT_PUBLIC_API_URL=
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=113963656390-odafike631l3st0onl83t4181b0vj75m.apps.googleusercontent.com
 ```
 
 `API_PROXY_TARGET` must be your **API public domain** from Part 4.
+
+`NEXT_PUBLIC_GOOGLE_CLIENT_ID` must match the API `GOOGLE_CLIENT_ID`. After you add or change it, **Redeploy** the web service (Next.js bakes this in at build time).
 
 ## Step 5.5 — Generate web domain
 
