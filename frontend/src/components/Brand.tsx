@@ -87,6 +87,7 @@ export function TopPerformerSpotlight({
   );
 }
 
+/** Official Calibre Aviation Academy emblem */
 export function BrandLogo({
   className = "h-16 w-auto",
   priority = false,
@@ -97,12 +98,13 @@ export function BrandLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/calibre-logo-v2.png"
+      src="/calibre-logo-clean.png"
       alt="Calibre Aviation Academy"
-      width={762}
-      height={712}
-      className={`bg-transparent object-contain ${className}`}
-      style={{ backgroundColor: "transparent" }}
+      width={752}
+      height={687}
+      className={`object-contain ${className}`}
+      decoding="async"
+      {...(priority ? { fetchPriority: "high" as const } : {})}
     />
   );
 }

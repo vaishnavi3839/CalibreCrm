@@ -3,7 +3,7 @@
   "appName": "Calibre CRM",
   "webDir": "www",
   "server": {
-    "url": "https://YOUR_HOSTED_CRM_URL",
+    "url": "https://www.calibrecrm.com",
     "cleartext": false,
     "allowNavigation": ["*"]
   },

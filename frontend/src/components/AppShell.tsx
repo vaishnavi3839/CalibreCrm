@@ -149,11 +149,15 @@ export function AppShell({
   return (
     <div className="min-h-screen">
       <aside className="fixed inset-y-0 left-0 z-30 flex w-56 flex-col bg-navy-900 text-white sm:w-64">
-        <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5 sm:px-5">
-          <BrandLogo className="h-10 w-auto sm:h-12" />
-          <div>
-            <div className="font-[family-name:var(--font-display)] text-base leading-tight sm:text-lg">Calibre</div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-brass-400 sm:text-[11px]">Aviation Academy</div>
+        <div className="flex items-center gap-3 border-b border-white/10 px-3 py-4 sm:px-4 sm:py-5">
+          <BrandLogo className="h-12 w-auto shrink-0 sm:h-14" />
+          <div className="min-w-0">
+            <div className="truncate font-[family-name:var(--font-display)] text-base leading-tight sm:text-lg">
+              Calibre
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-brass-400 sm:text-[11px]">
+              Aviation Academy
+            </div>
           </div>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4 sm:px-3">
