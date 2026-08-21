@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "Calibre CRM",
   },
   icons: {
@@ -39,7 +39,7 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#0a1628",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
