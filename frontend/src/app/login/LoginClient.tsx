@@ -200,9 +200,7 @@ export function LoginClient() {
         });
         const res = await SocialLogin.login({
           provider: "google",
-          options: {
-            scopes: ["email", "profile"],
-          },
+          options: {},
         });
         const idToken =
           (res as { result?: { idToken?: string }; idToken?: string }).result?.idToken ||
