@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
+import { FieldRow } from "@/components/FieldRow";
 import { api } from "@/lib/api";
 
 const STAFF_ROLES = [
@@ -171,71 +172,122 @@ export default function StaffPage() {
         )}
         {error && <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <div className="glass-panel overflow-hidden rounded-2xl">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-cloud-50 text-xs uppercase tracking-wider text-muted">
-              <tr>
-                <th className="px-4 py-3">Staff</th>
-                <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Department</th>
-                <th className="px-4 py-3">Salary</th>
-                <th className="px-4 py-3">Branch</th>
-                <th className="px-4 py-3">Contact</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((s) => (
-                <tr key={s.id} className="border-t border-cloud-100">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={s.photo_url} alt={s.name} className="h-10 w-10 rounded-full object-cover" />
-                      <div>
-                        <div className="font-medium text-navy-900">{s.name}</div>
-                        <div className="text-xs text-muted">{s.designation || "—"}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">{s.employee_code}</td>
-                  <td className="px-4 py-3 capitalize">{s.role_display || s.role}</td>
-                  <td className="px-4 py-3">{s.department || "—"}</td>
-                  <td className="px-4 py-3">₹{(s.monthly_salary || 0).toLocaleString()}</td>
-                  <td className="px-4 py-3">{s.branch_name || "—"}</td>
-                  <td className="px-4 py-3">
-                    <div>{s.email}</div>
-                    <div className="text-xs text-muted">{s.phone || ""}</div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(s)}
-                        className="rounded-lg border border-cloud-200 px-3 py-1.5 text-xs font-medium text-navy-900"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Delete staff ${s.name}? They will lose login access.`)) return;
-                          try {
-                            await api(`/api/v1/staff/${s.id}`, { method: "DELETE" });
-                            setMessage(`${s.name} deleted`);
-                            await load();
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : "Delete failed");
-                          }
-                        }}
-                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+        <div className="space-y-3 md:hidden">
+          {items.map((s) => (
+            <div key={s.id} className="glass-panel rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.photo_url} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-navy-900">{s.name}</div>
+                    <div className="text-xs text-muted">{s.employee_code}</div>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => openEdit(s)} className="rounded-lg border border-cloud-200 px-3 py-1.5 text-xs font-medium">
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm(`Delete staff ${s.name}? They will lose login access.`)) return;
+                      try {
+                        await api(`/api/v1/staff/${s.id}`, { method: "DELETE" });
+                        setMessage(`${s.name} deleted`);
+                        await load();
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Delete failed");
+                      }
+                    }}
+                    className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              <dl className="mt-3 space-y-2 border-t border-cloud-100 pt-3">
+                <FieldRow label="Role" value={s.role_display || s.role} />
+                <FieldRow label="Designation" value={s.designation || "—"} />
+                <FieldRow label="Department" value={s.department || "—"} />
+                <FieldRow label="Salary" value={`₹${(s.monthly_salary || 0).toLocaleString()}`} />
+                <FieldRow label="Branch" value={s.branch_name || "—"} />
+                <FieldRow label="Email" value={s.email} />
+                <FieldRow label="Phone" value={s.phone || "—"} />
+              </dl>
+            </div>
+          ))}
+        </div>
+
+        <div className="glass-panel hidden overflow-hidden rounded-2xl md:block">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-cloud-50 text-xs uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="px-4 py-3">Staff</th>
+                  <th className="px-4 py-3">Code</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Department</th>
+                  <th className="px-4 py-3">Salary</th>
+                  <th className="px-4 py-3">Branch</th>
+                  <th className="px-4 py-3">Contact</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((s) => (
+                  <tr key={s.id} className="border-t border-cloud-100">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={s.photo_url} alt={s.name} className="h-10 w-10 rounded-full object-cover" />
+                        <div>
+                          <div className="font-medium text-navy-900">{s.name}</div>
+                          <div className="text-xs text-muted">{s.designation || "—"}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">{s.employee_code}</td>
+                    <td className="px-4 py-3 capitalize">{s.role_display || s.role}</td>
+                    <td className="px-4 py-3">{s.department || "—"}</td>
+                    <td className="px-4 py-3">₹{(s.monthly_salary || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3">{s.branch_name || "—"}</td>
+                    <td className="px-4 py-3">
+                      <div>{s.email}</div>
+                      <div className="text-xs text-muted">{s.phone || ""}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(s)}
+                          className="rounded-lg border border-cloud-200 px-3 py-1.5 text-xs font-medium text-navy-900"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!confirm(`Delete staff ${s.name}? They will lose login access.`)) return;
+                            try {
+                              await api(`/api/v1/staff/${s.id}`, { method: "DELETE" });
+                              setMessage(`${s.name} deleted`);
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : "Delete failed");
+                            }
+                          }}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {open && (

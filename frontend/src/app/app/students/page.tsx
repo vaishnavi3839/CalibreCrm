@@ -170,56 +170,130 @@ export default function StudentsPage() {
         )}
         {error && <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <div className="glass-panel overflow-hidden rounded-2xl">
-          <table className="min-w-full text-sm">
-            <thead className="bg-cloud-50 text-xs uppercase text-muted">
-              <tr>
-                <th className="px-4 py-3 text-left">Student</th>
-                <th className="px-4 py-3 text-left">Email / Login</th>
-                <th className="px-4 py-3 text-left">Course</th>
-                <th className="px-4 py-3 text-left">Branch</th>
-                <th className="px-4 py-3 text-left">Attendance</th>
-                <th className="px-4 py-3 text-left">Progress</th>
-                {canManage && <th className="px-4 py-3"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((s) => (
-                <tr key={s.id} className="border-t border-cloud-100">
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{s.name}</div>
-                    <div className="text-xs text-muted">{s.student_code}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{s.email || "—"}</div>
-                    <div className="text-xs text-muted">{s.phone || ""}</div>
-                  </td>
-                  <td className="px-4 py-3">{s.course || "—"}</td>
-                  <td className="px-4 py-3">{s.branch_name || "—"}</td>
-                  <td className="px-4 py-3">{s.attendance_pct}%</td>
-                  <td className="px-4 py-3">{s.course_progress_pct}%</td>
-                  {canManage && (
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => openEdit(s)}
-                          className="rounded-lg border border-cloud-200 px-3 py-1.5 text-xs font-medium text-navy-900"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => onDelete(s)}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  )}
+        {/* Mobile: cards with all fields visible */}
+        <div className="space-y-3 md:hidden">
+          {items.map((s) => (
+            <div key={s.id} className="glass-panel rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-navy-900">{s.name}</div>
+                  <div className="text-xs text-muted">{s.student_code}</div>
+                </div>
+                {canManage && (
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(s)}
+                      className="rounded-lg border border-cloud-200 px-3 py-1.5 text-xs font-medium text-navy-900"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(s)}
+                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between gap-3 border-t border-cloud-100 pt-2">
+                  <dt className="text-muted">Email</dt>
+                  <dd className="max-w-[60%] break-all text-right text-navy-900">{s.email || "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Phone</dt>
+                  <dd className="text-right text-navy-900">{s.phone || "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Course</dt>
+                  <dd className="max-w-[60%] text-right text-navy-900">{s.course || "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Batch</dt>
+                  <dd className="max-w-[60%] text-right text-navy-900">{s.batch || "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Branch</dt>
+                  <dd className="max-w-[60%] text-right text-navy-900">{s.branch_name || "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Attendance</dt>
+                  <dd className="text-right font-medium text-navy-900">{s.attendance_pct}%</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Progress</dt>
+                  <dd className="text-right font-medium text-navy-900">{s.course_progress_pct}%</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+          {!items.length && (
+            <div className="rounded-2xl border border-dashed border-cloud-200 px-4 py-8 text-center text-sm text-muted">
+              No students yet.
+            </div>
+          )}
+        </div>
+
+        {/* Desktop: full table (swipe horizontally if needed) */}
+        <div className="glass-panel hidden overflow-hidden rounded-2xl md:block">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-cloud-50 text-xs uppercase text-muted">
+                <tr>
+                  <th className="px-4 py-3 text-left">Student</th>
+                  <th className="px-4 py-3 text-left">Email / Login</th>
+                  <th className="px-4 py-3 text-left">Course</th>
+                  <th className="px-4 py-3 text-left">Batch</th>
+                  <th className="px-4 py-3 text-left">Branch</th>
+                  <th className="px-4 py-3 text-left">Attendance</th>
+                  <th className="px-4 py-3 text-left">Progress</th>
+                  {canManage && <th className="px-4 py-3"></th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((s) => (
+                  <tr key={s.id} className="border-t border-cloud-100">
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{s.name}</div>
+                      <div className="text-xs text-muted">{s.student_code}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{s.email || "—"}</div>
+                      <div className="text-xs text-muted">{s.phone || ""}</div>
+                    </td>
+                    <td className="px-4 py-3">{s.course || "—"}</td>
+                    <td className="px-4 py-3">{s.batch || "—"}</td>
+                    <td className="px-4 py-3">{s.branch_name || "—"}</td>
+                    <td className="px-4 py-3">{s.attendance_pct}%</td>
+                    <td className="px-4 py-3">{s.course_progress_pct}%</td>
+                    {canManage && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(s)}
+                            className="rounded-lg border border-cloud-200 px-3 py-1.5 text-xs font-medium text-navy-900"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDelete(s)}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {open && canManage && (

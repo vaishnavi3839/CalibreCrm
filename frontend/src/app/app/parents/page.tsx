@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
+import { FieldRow } from "@/components/FieldRow";
 import { api } from "@/lib/api";
 
 const emptyForm = {
@@ -93,39 +94,73 @@ export default function ParentsPage() {
         )}
         {error && <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <div className="glass-panel overflow-hidden rounded-2xl">
-          <table className="min-w-full text-sm">
-            <thead className="bg-cloud-50 text-xs uppercase text-muted">
-              <tr>
-                <th className="px-4 py-3 text-left">Parent</th>
-                <th className="px-4 py-3 text-left">Email / Login</th>
-                <th className="px-4 py-3 text-left">Linked student(s)</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((p) => (
-                <tr key={p.id} className="border-t border-cloud-100">
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{p.name}</div>
-                    <div className="text-xs text-muted capitalize">{p.relationship_type}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{p.email}</div>
-                    <div className="text-xs text-muted">{p.phone || ""}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {(p.students || []).map((s: any) => s.name).join(", ") || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => onDelete(p)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700">
-                      Delete
-                    </button>
-                  </td>
+        <div className="space-y-3 md:hidden">
+          {items.map((p) => (
+            <div key={p.id} className="glass-panel rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-navy-900">{p.name}</div>
+                  <div className="text-xs capitalize text-muted">{p.relationship_type}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onDelete(p)}
+                  className="shrink-0 rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
+                >
+                  Delete
+                </button>
+              </div>
+              <dl className="mt-3 space-y-2 border-t border-cloud-100 pt-3">
+                <FieldRow label="Email" value={p.email} />
+                <FieldRow label="Phone" value={p.phone || "—"} />
+                <FieldRow
+                  label="Students"
+                  value={(p.students || []).map((s: any) => s.name).join(", ") || "—"}
+                />
+              </dl>
+            </div>
+          ))}
+        </div>
+
+        <div className="glass-panel hidden overflow-hidden rounded-2xl md:block">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-cloud-50 text-xs uppercase text-muted">
+                <tr>
+                  <th className="px-4 py-3 text-left">Parent</th>
+                  <th className="px-4 py-3 text-left">Email / Login</th>
+                  <th className="px-4 py-3 text-left">Linked student(s)</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr key={p.id} className="border-t border-cloud-100">
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{p.name}</div>
+                      <div className="text-xs text-muted capitalize">{p.relationship_type}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{p.email}</div>
+                      <div className="text-xs text-muted">{p.phone || ""}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(p.students || []).map((s: any) => s.name).join(", ") || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onDelete(p)}
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {open && (

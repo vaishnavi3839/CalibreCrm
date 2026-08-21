@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { TopPerformerSpotlight } from "@/components/Brand";
+import { FieldRow } from "@/components/FieldRow";
 import { api } from "@/lib/api";
 
 type Report = {
@@ -71,46 +72,78 @@ export default function DailyReportPage() {
               ))}
             </div>
 
-            <div className="glass-panel overflow-hidden rounded-2xl">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-cloud-50 text-xs uppercase tracking-wider text-muted">
-                  <tr>
-                    <th className="px-4 py-3">Staff</th>
-                    <th className="px-4 py-3">Calls</th>
-                    <th className="px-4 py-3">Connected</th>
-                    <th className="px-4 py-3">Follow-ups</th>
-                    <th className="px-4 py-3">Missed</th>
-                    <th className="px-4 py-3">Hot</th>
-                    <th className="px-4 py-3">Reg</th>
-                    <th className="px-4 py-3">Adm</th>
-                    <th className="px-4 py-3">Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.items.map((row) => (
-                    <tr key={row.staff_id} className="border-t border-cloud-100">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={row.photo_url} alt={row.name} className="h-9 w-9 rounded-full object-cover" />
-                          <div>
-                            <div className="font-medium text-navy-900">{row.name}</div>
-                            <div className="text-xs capitalize text-muted">{row.role}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">{row.calls_completed}</td>
-                      <td className="px-4 py-3">{row.connected_calls}</td>
-                      <td className="px-4 py-3">{row.followups_completed}</td>
-                      <td className="px-4 py-3 text-hot">{row.followups_missed}</td>
-                      <td className="px-4 py-3">{row.hot_leads}</td>
-                      <td className="px-4 py-3">{row.registrations}</td>
-                      <td className="px-4 py-3">{row.admissions}</td>
-                      <td className="px-4 py-3 font-semibold text-brass-500">{row.score}</td>
+            <div className="space-y-3 md:hidden">
+              {report.items.map((row) => (
+                <div key={row.staff_id} className="glass-panel rounded-2xl p-4">
+                  <div className="flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={row.photo_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-navy-900">{row.name}</div>
+                      <div className="text-xs capitalize text-muted">{row.role}</div>
+                    </div>
+                    <div className="ml-auto font-semibold text-brass-500">{row.score}</div>
+                  </div>
+                  <dl className="mt-3 space-y-2 border-t border-cloud-100 pt-3">
+                    <FieldRow label="Calls" value={row.calls_completed} />
+                    <FieldRow label="Connected" value={row.connected_calls} />
+                    <FieldRow label="Follow-ups" value={row.followups_completed} />
+                    <FieldRow label="Missed" value={<span className="text-hot">{row.followups_missed}</span>} />
+                    <FieldRow label="Hot leads" value={row.hot_leads} />
+                    <FieldRow label="Registrations" value={row.registrations} />
+                    <FieldRow label="Admissions" value={row.admissions} />
+                  </dl>
+                </div>
+              ))}
+              {!report.items.length && (
+                <div className="rounded-2xl border border-dashed border-cloud-200 px-4 py-8 text-center text-sm text-muted">
+                  No performance rows for this date yet.
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel hidden overflow-hidden rounded-2xl md:block">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-cloud-50 text-xs uppercase tracking-wider text-muted">
+                    <tr>
+                      <th className="px-4 py-3">Staff</th>
+                      <th className="px-4 py-3">Calls</th>
+                      <th className="px-4 py-3">Connected</th>
+                      <th className="px-4 py-3">Follow-ups</th>
+                      <th className="px-4 py-3">Missed</th>
+                      <th className="px-4 py-3">Hot</th>
+                      <th className="px-4 py-3">Reg</th>
+                      <th className="px-4 py-3">Adm</th>
+                      <th className="px-4 py-3">Score</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {report.items.map((row) => (
+                      <tr key={row.staff_id} className="border-t border-cloud-100">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={row.photo_url} alt={row.name} className="h-9 w-9 rounded-full object-cover" />
+                            <div>
+                              <div className="font-medium text-navy-900">{row.name}</div>
+                              <div className="text-xs capitalize text-muted">{row.role}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">{row.calls_completed}</td>
+                        <td className="px-4 py-3">{row.connected_calls}</td>
+                        <td className="px-4 py-3">{row.followups_completed}</td>
+                        <td className="px-4 py-3 text-hot">{row.followups_missed}</td>
+                        <td className="px-4 py-3">{row.hot_leads}</td>
+                        <td className="px-4 py-3">{row.registrations}</td>
+                        <td className="px-4 py-3">{row.admissions}</td>
+                        <td className="px-4 py-3 font-semibold text-brass-500">{row.score}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {!report.items.length && (
                 <div className="px-4 py-8 text-center text-sm text-muted">No performance rows for this date yet.</div>
               )}

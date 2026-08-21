@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
+import { FieldRow } from "@/components/FieldRow";
 import { api, API_BASE } from "@/lib/api";
 import { formatLabel, tempClass } from "@/lib/utils";
 
@@ -284,7 +285,34 @@ export default function LeadsPage() {
           marked <em>Available for lead assignment</em> (Staff page). Example: Lead 1 → Priya, Lead 2 → Arjun, Lead 3 → Meera, then repeat.
         </div>
 
-        <div className="glass-panel overflow-hidden rounded-2xl">
+        <div className="space-y-3 md:hidden">
+          {leads.map((lead) => (
+            <Link
+              key={lead.id}
+              href={`/app/leads/${lead.id}`}
+              className="glass-panel block rounded-2xl p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-navy-900">{lead.name}</div>
+                  <div className="text-xs text-muted">{lead.lead_code}</div>
+                </div>
+                {lead.temperature ? (
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${tempClass(lead.temperature)}`}>
+                    {lead.temperature}
+                  </span>
+                ) : null}
+              </div>
+              <dl className="mt-3 space-y-2 border-t border-cloud-100 pt-3">
+                <FieldRow label="Phone" value={lead.phone} />
+                <FieldRow label="Status" value={formatLabel(lead.status)} />
+                <FieldRow label="Score" value={lead.score} />
+              </dl>
+            </Link>
+          ))}
+        </div>
+
+        <div className="glass-panel hidden overflow-hidden rounded-2xl md:block">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-cloud-50 text-xs uppercase tracking-wider text-muted">

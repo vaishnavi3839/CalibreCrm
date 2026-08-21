@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
+import { FieldRow } from "@/components/FieldRow";
 import { api } from "@/lib/api";
 
 type Settings = {
@@ -331,7 +332,26 @@ export default function PunchAdminPage() {
               Refresh
             </button>
           </div>
-          <div className="mt-3 overflow-x-auto">
+          <div className="mt-3 space-y-3 md:hidden">
+            {presence.map((p) => (
+              <div key={p.staff_id} className="rounded-xl border border-cloud-100 p-3">
+                <div className="font-medium text-navy-900">{p.name}</div>
+                <div className="text-xs text-muted">{p.employee_code}</div>
+                <dl className="mt-2 space-y-1.5">
+                  <FieldRow label="Status" value={p.status.replaceAll("_", " ")} />
+                  <FieldRow
+                    label="Last punch"
+                    value={p.last_punched_at ? new Date(p.last_punched_at).toLocaleString() : "—"}
+                  />
+                  <FieldRow
+                    label="Distance"
+                    value={p.distance_m != null ? `${Math.round(p.distance_m)}m` : "—"}
+                  />
+                </dl>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead className="text-muted">
                 <tr>
