@@ -22,6 +22,13 @@ allprojects {
         google()
         mavenCentral()
     }
+    // Capgo Social Login: Apple compileOnly wants browser 1.9.0; androidbrowserhelper wants 1.4.0.
+    // Pin one SDK-35-safe version for the whole project.
+    configurations.configureEach {
+        resolutionStrategy {
+            force "androidx.browser:browser:1.8.0"
+        }
+    }
 }
 
 task clean(type: Delete) {
