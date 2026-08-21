@@ -8,6 +8,10 @@ import { dashboardPathForRole, useAuth } from "@/lib/auth-context";
 
 declare global {
   interface Window {
+    Capacitor?: {
+      isNativePlatform?: () => boolean;
+      getPlatform?: () => string;
+    };
     google?: {
       accounts: {
         id: {
@@ -35,6 +39,14 @@ function GoogleGlyph() {
   );
 }
 
+function isNativeApp() {
+  try {
+    return Boolean(window.Capacitor?.isNativePlatform?.());
+  } catch {
+    return false;
+  }
+}
+
 export function LoginClient() {
   const { login, loginWithGoogle } = useAuth();
   const router = useRouter();
@@ -44,7 +56,7 @@ export function LoginClient() {
   const [busy, setBusy] = useState(false);
   const [googleClientId, setGoogleClientId] = useState(GOOGLE_WEB_CLIENT_ID);
   const [googleReady, setGoogleReady] = useState(false);
-  const [googleFailed, setGoogleFailed] = useState(false);
+  const [nativeMode, setNativeMode] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const loginWithGoogleRef = useRef(loginWithGoogle);
@@ -67,6 +79,10 @@ export function LoginClient() {
   );
 
   useEffect(() => {
+    setNativeMode(isNativeApp());
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -86,8 +102,9 @@ export function LoginClient() {
     };
   }, []);
 
+  // Browser: load Google Identity Services button (blocked inside Capacitor WebView).
   useEffect(() => {
-    if (!googleClientId) return;
+    if (!googleClientId || nativeMode) return;
     let cancelled = false;
     let tries = 0;
     let poll: number | undefined;
@@ -113,7 +130,6 @@ export function LoginClient() {
         logo_alignment: "left",
       });
       setGoogleReady(true);
-      setGoogleFailed(false);
       return true;
     };
 
@@ -125,9 +141,6 @@ export function LoginClient() {
       script.src = "https://accounts.google.com/gsi/client";
       script.async = true;
       script.defer = true;
-      script.onerror = () => {
-        if (!cancelled) setGoogleFailed(true);
-      };
       document.body.appendChild(script);
     }
     script.addEventListener("load", () => {
@@ -140,10 +153,7 @@ export function LoginClient() {
         window.clearInterval(poll);
         return;
       }
-      if (tries > 40) {
-        window.clearInterval(poll);
-        if (!cancelled) setGoogleFailed(true);
-      }
+      if (tries > 40) window.clearInterval(poll);
     }, 150);
 
     const onResize = () => {
@@ -155,20 +165,76 @@ export function LoginClient() {
       if (poll) window.clearInterval(poll);
       window.removeEventListener("resize", onResize);
     };
-  }, [googleClientId, handleCredential]);
+  }, [googleClientId, handleCredential, nativeMode]);
 
-  function onGoogleFallbackClick() {
-    if (!window.google?.accounts?.id) {
-      setError("Google Sign-In could not load. Check your connection and try again.");
+  // Native app: initialize Capgo Social Login (Google Credential Manager).
+  useEffect(() => {
+    if (!nativeMode || !googleClientId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { SocialLogin } = await import("@capgo/capacitor-social-login");
+        if (cancelled) return;
+        await SocialLogin.initialize({
+          google: { webClientId: googleClientId },
+        });
+      } catch {
+        // Button still works; login() will surface the error
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeMode, googleClientId]);
+
+  async function onGoogleClick() {
+    if (busy) return;
+    setError("");
+
+    if (nativeMode) {
+      setBusy(true);
+      try {
+        const { SocialLogin } = await import("@capgo/capacitor-social-login");
+        await SocialLogin.initialize({
+          google: { webClientId: googleClientId },
+        });
+        const res = await SocialLogin.login({
+          provider: "google",
+          options: {
+            scopes: ["email", "profile"],
+          },
+        });
+        const idToken =
+          (res as { result?: { idToken?: string }; idToken?: string }).result?.idToken ||
+          (res as { idToken?: string }).idToken;
+        if (!idToken) {
+          throw new Error("Google did not return an ID token. Check Android OAuth client SHA-1 setup.");
+        }
+        await handleCredential(idToken);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Google sign-in failed";
+        if (/cancel|dismiss|closed/i.test(msg)) {
+          setError("");
+        } else {
+          setError(msg);
+        }
+        setBusy(false);
+      }
       return;
     }
-    window.google.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed()) {
-        setError(
-          `Google Sign-In unavailable (${notification.getNotDisplayedReason() || "blocked"}). Use email/password, or open this page in Chrome.`
-        );
-      }
-    });
+
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed()) {
+          setError(
+            `Google Sign-In unavailable (${notification.getNotDisplayedReason() || "blocked"}). Use email/password, or try again.`
+          );
+        }
+      });
+      return;
+    }
+
+    setError("Google Sign-In is still loading. Wait a moment and try again, or use email/password.");
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -247,30 +313,26 @@ export function LoginClient() {
             <div className="h-px flex-1 bg-cloud-200" />
           </div>
 
-          {/* Always-visible Google CTA. Official GSI button overlays it when loaded. */}
           <div ref={wrapRef} className="relative w-full">
             <button
               type="button"
               disabled={busy}
-              onClick={onGoogleFallbackClick}
+              onClick={() => void onGoogleClick()}
               className="flex w-full items-center justify-center gap-3 rounded-full border border-cloud-200 bg-white px-4 py-2.5 text-sm font-medium text-navy-900 shadow-sm transition hover:bg-cloud-50 disabled:opacity-60"
             >
               <GoogleGlyph />
               Sign in with Google
             </button>
-            <div
-              ref={googleBtnRef}
-              className={`absolute inset-0 flex items-center justify-center overflow-hidden ${
-                googleReady ? "opacity-100" : "pointer-events-none opacity-0"
-              }`}
-              aria-hidden={!googleReady}
-            />
+            {!nativeMode && (
+              <div
+                ref={googleBtnRef}
+                className={`absolute inset-0 flex items-center justify-center overflow-hidden ${
+                  googleReady ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+                aria-hidden={!googleReady}
+              />
+            )}
           </div>
-          {googleFailed && (
-            <p className="mt-2 text-center text-xs text-muted">
-              Google button could not load — tap above to retry, or use email/password.
-            </p>
-          )}
         </form>
       </div>
     </div>

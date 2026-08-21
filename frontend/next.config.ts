@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const API_ORIGIN = process.env.API_PROXY_TARGET || "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
+  // Capacitor plugins ship uncompiled ESM that Next needs to transpile.
+  transpilePackages: ["@capgo/capacitor-social-login", "@capacitor/core"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "api.dicebear.com" },

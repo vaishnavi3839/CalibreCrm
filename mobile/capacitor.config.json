@@ -11,6 +11,18 @@
     "SplashScreen": {
       "launchShowDuration": 1500,
       "backgroundColor": "#0a1628"
+    },
+    "SocialLogin": {
+      "providers": {
+        "google": true,
+        "facebook": false,
+        "apple": false,
+        "twitter": false
+      },
+      "google": {
+        "webClientId": "113963656390-odafike631l3st0onl83t4181b0vj75m.apps.googleusercontent.com",
+        "androidClientId": "113963656390-1jrj6k2f9vchm55rsk9ie64s7l5t94nf.apps.googleusercontent.com"
+      }
     }
   },
   "android": {
